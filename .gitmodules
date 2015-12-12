@@ -1,0 +1,6 @@
+[submodule "freetronics_kicad_library"]
+	path = freetronics_kicad_library
+	url = https://github.com/freetronics/freetronics_kicad_library.git
+[submodule "kicad-ESP8266"]
+	path = kicad-ESP8266
+	url = https://github.com/jdunmire/kicad-ESP8266.git
