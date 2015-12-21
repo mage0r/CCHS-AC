@@ -1,4 +1,4 @@
-update=10/12/2015 9:44:53 PM
+update=13/12/2015 10:22:07 PM
 version=1
 last_client=kicad
 [pcbnew]
@@ -60,3 +60,13 @@ LibName28=contrib
 LibName29=valves
 LibName30=kicad-ESP8266/ESP8266
 LibName31=freetronics_kicad_library/freetronics_schematic
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=
+SpiceForceRefPrefix=0
+SpiceUseNetNumbers=0
+LabSize=60
