@@ -1,0 +1,384 @@
+/**************************************************************************/
+/*! 
+
+*/
+/**************************************************************************/
+
+#include <PN532_HSU.h>
+#include <PN532.h>
+#include "ACNode.h"
+      
+PN532_HSU pn532hsu(Serial);
+PN532 nfc(pn532hsu);
+
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+
+//const char *ssid = "CCHS-2.4";
+//const char *password = "hackmelb";
+const char *ssid = "_mage_net";
+const char *password = "worldsgreates";
+MDNSResponder mdns;
+
+ESP8266WebServer server ( 80 );
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C	lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified backpack
+
+const byte sclPin = 14;
+const byte sdaPin = 0;
+
+const int relay = 2;
+
+ButtonLocal buttons[3];
+
+String system_display[4];
+String current_display[4];
+boolean update_display = true;
+String current_card;
+int current_uid;
+int old_uid;
+
+unsigned long card_check = 0;
+unsigned long button_check = 0;
+
+boolean eStop = false;
+boolean monkeys = false;
+boolean valid_card = false;
+boolean showStatus = false;
+
+// valid users
+Users user_list[2];
+
+void setup(void) {
+
+  pinMode(buttons[0].pin,INPUT);
+  pinMode(buttons[1].pin,INPUT);
+  pinMode(buttons[2].pin,INPUT);
+  pinMode(relay,OUTPUT);
+
+  // Unfortunately the relay I'm using is LOW active.
+  // This is kind of bad....
+  // It flicks on for a second on boot.
+  digitalWrite(relay, HIGH);
+  
+  Wire.begin(sdaPin, sclPin);
+
+  WiFi.begin ( ssid, password );
+    
+  lcd.begin (20,4); // for 16 x 2 LCD module
+  lcd.setBacklightPin(3,POSITIVE);
+  lcd.setBacklight(1);
+
+  // set up our buttons
+  buttons[0].pin = 13;
+  buttons[0].colour = "green"; // System Status.
+  buttons[0].state = false;
+  buttons[0].oldState = false;
+  buttons[0].lastDebounce = millis();
+  buttons[1].pin = 12;
+  buttons[1].colour = "red"; // Soft Estop Trigger.....Do not like....
+  buttons[1].state = false;
+  buttons[1].oldState = false;
+  buttons[1].lastDebounce = millis();
+  buttons[2].pin = 15;
+  buttons[2].colour = "trigger"; // Summon Monkey
+  buttons[2].state = false;
+  buttons[2].oldState = false;
+  buttons[2].lastDebounce = millis();
+
+  // set up some static test users
+  user_list[0].uid = "aafa456f";
+  user_list[0].username = "john.spencer";
+  user_list[0].level = 1;
+  user_list[1].uid = "46d9d9c7";
+  user_list[1].username = "sarah.spencer";
+  user_list[1].level = 0;
+  
+  nfc.begin();
+
+  // lets show some nice boot messages.
+  lcd.home();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(F("Booting ACNode 1.0"));
+  updateSystemDisplay("Booting ACNode 1.0");
+  lcd.setCursor(0,1);
+
+  uint32_t versiondata = nfc.getFirmwareVersion();
+  if (! versiondata) {
+    lcd.print(F("No PN53x board"));
+    updateSystemDisplay("PN53x board found");
+    //while (1); // halt
+  } else {
+    lcd.print(F("PN53x board found"));
+    updateSystemDisplay("PN53x board found");
+  }
+
+  lcd.setCursor(0,2);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    lcd.print(".");
+  }
+  
+  lcd.setCursor(0,3);
+  lcd.print(WiFi.localIP());
+  updateSystemDisplay((String)WiFi.localIP());
+
+  if (mdns.begin("esp8266", WiFi.localIP())) {
+    updateSystemDisplay("MDNS responder started");
+  }
+
+  server.on ( "/", handleRoot );
+  server.on ( "", handleRoot );
+  server.begin();
+
+  delay(2000);
+  
+
+  // configure board to read RFID tags
+  nfc.SAMConfig();
+
+
+  // once we have network up, check if the monkeys button is active in the database.
+
+  
+}
+
+
+void loop(void) {
+  //mdns.update();
+  server.handleClient();
+
+  // Unlock the machine
+  // hey, is this machine even active?!
+  if(!eStop && !monkeys && valid_card) {
+    // we are in GO mode.
+    digitalWrite(relay, LOW);
+  } else {
+    digitalWrite(relay, HIGH);
+  }
+
+  
+
+  
+  // check with server if card is available.
+  checkForCard(); // see if the card status has changed.
+
+  
+
+  // debounce the buttons.
+  for (int i = 0; i<3;i++) {
+    if(debounce(i))
+      buttonMenu(i);
+  }
+ 
+
+  // log message
+
+  // Display stuff.
+  if(update_display) {
+    String ac_status;
+    
+    lcd.clear();
+    lcd.print("ACNode 1.0");
+
+    
+    if(eStop)
+      ac_status = "  [ESTOP]";
+    
+
+    // only show this stuff if we're not on status screen
+    if (!showStatus) {
+    // Update the status display the summon monkeys lock
+      if(monkeys) {
+        ac_status = " [LOCKED]";
+          lcd.setCursor(0,2);
+          lcd.print("Machine Disabled.");
+          lcd.setCursor(0,3);
+          lcd.print("Monkeys Notified.");
+      }
+
+      if(current_uid == -2) {
+        ac_status = "[BADCARD]";
+        valid_card = false;
+      } else if(current_uid == -1) {
+        if(!monkeys)
+          ac_status = " [NOCARD]";
+        valid_card = false;
+      } else if(user_list[current_uid].level == 1) {
+        valid_card = true;
+        ac_status = "[TRAINER]";
+      } else if(user_list[current_uid].level == 2) {
+        ac_status = "  [ADMIN]";
+      
+      } else {
+        ac_status = " [ACTIVE]";
+        //lcd.setCursor(0,3);
+        //lcd.print("                    ");
+        //lcd.print("                    ");
+      }
+
+      if(current_uid >= 0) {
+        lcd.setCursor(0,1);
+        lcd.print(user_list[current_uid].username.substring(0,10));
+        lcd.setCursor(12,1);
+        lcd.print(F("--:--:--"));
+      }
+
+      //lcd.setCursor(0,2);
+      //lcd.print(current_uid);
+  
+      // Current machine Status
+      lcd.setCursor(11,0);
+      lcd.print(ac_status);
+    }
+    
+    
+    update_display = false;
+  }
+  
+}
+
+void handleRoot() {
+  server.send(200, "text/plain", "hello from esp8266!");
+}
+
+void updateSystemDisplay(String newLine) {
+ // so, basically a pop system.
+ // first iteration is probably going to leak like a sieve...
+ // Update our back end database here too!
+ // a new line has been received.
+
+ for (int i = 0; i < 3; i++){
+  system_display[i] = system_display[i+1];
+ }
+ system_display[3] = newLine.substring(0,20);
+}
+
+// Display the system log on the main screen.
+void displaySystem(){
+  lcd.clear();
+  for (int i = 0; i < 4; i++){
+    lcd.setCursor(0,i);
+    lcd.print(system_display[i]);
+ }
+ update_display = false;
+}
+
+// What do our buttons do?
+void buttonMenu(int array_position) {
+
+  if (buttons[array_position].colour == "red") {
+    if(buttons[array_position].state == true) {
+      if(eStop) {
+        eStop = false;
+        updateSystemDisplay("ESTOP:OFF");
+      } else {
+        eStop = true;
+        updateSystemDisplay("ESTOP:ON");
+      }
+      update_display = true;
+    }
+  } else if (buttons[array_position].colour == "green") {
+    if(buttons[array_position].state == true) {
+      showStatus = true;
+      displaySystem();
+    } else {
+      showStatus = false;
+      update_display = true;
+    }
+  } else if (buttons[array_position].colour == "trigger") {
+    if(buttons[array_position].state == true) {
+      monkeys = true;
+      
+      updateSystemDisplay("Machine Disabled.");
+      update_display = true;
+    } else if(user_list[current_uid].level == 1) {
+      // We're an admin user, so the Monkey Call can be disabled.
+      monkeys = false;
+      updateSystemDisplay("Machine Enabled.");
+      update_display = true;
+    }
+  }
+}
+
+boolean debounce(int array_position){
+  long debounceDelay = 50;
+  int reading = digitalRead(buttons[array_position].pin);
+  boolean stateChange = false;
+
+  if (reading != buttons[array_position].oldState) 
+    buttons[array_position].lastDebounce = millis();
+
+  if ( (millis() - buttons[array_position].lastDebounce) > debounceDelay){
+    if(reading != buttons[array_position].state) {
+      buttons[array_position].state = reading;
+
+       stateChange = true;
+    }
+  }
+
+  buttons[array_position].oldState = reading;
+
+  // return true when state has changed.
+  return stateChange;
+}
+
+// lets just pull the card check stuff out in to it's own function.
+void checkForCard() {
+  uint8_t success = false;
+  uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
+  uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+    
+  // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
+  // 'uid' will be populated with the UID, and uidLength will indicate
+  // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
+  // lets just check every 2 seconds, otherwise this success check takes forever.
+  if (card_check < millis() - 2000) {
+    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+    card_check = millis();
+
+    // successfully read the uid
+    if (success) {
+      String temp;
+          
+      nfc.PrintHex(uid, uidLength);
+      
+      for (uint8_t i = 0; i < uidLength; i++) {
+          temp += String(lowByte(uid[i]), HEX);
+      }
+  
+      old_uid = current_uid;
+      current_uid = -2;
+  
+      for (int i = 0; i < 2; i++) {
+        if (user_list[i].uid == temp) {
+          current_uid = i;
+        }
+      }
+  
+      if (current_card != temp) {
+        current_card = temp;
+        updateSystemDisplay("Card:"+temp);
+      }
+    } else {
+      // Not a card in the reader I guess.
+      // probably should lock this thing down
+      current_uid = -1;
+    }
+
+    // we've actually had a state change!
+    if(current_uid != old_uid) {
+      old_uid = current_uid;
+      update_display = true;
+    }
+  }
+}
+
+
+

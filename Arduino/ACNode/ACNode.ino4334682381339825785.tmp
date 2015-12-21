@@ -1,0 +1,431 @@
+/**************************************************************************/
+/*! 
+
+*/
+/**************************************************************************/
+
+#include <PN532_HSU.h>
+#include <PN532.h>
+#include "ACNode.h"
+      
+PN532_HSU pn532hsu(Serial);
+PN532 nfc(pn532hsu);
+
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+
+//const char *ssid = "CCHS-2.4";
+//const char *password = "hackmelb";
+const char *ssid = "_mage_net";
+const char *password = "worldsgreates";
+MDNSResponder mdns;
+const char* host = "192.168.1.20";
+WiFiClient client;
+const int httpPort = 80;
+
+String machine_name = "bessie";
+
+ESP8266WebServer server ( 80 );
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C	lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified backpack
+
+const byte sclPin = 14;
+const byte sdaPin = 0;
+
+const int relay = 2;
+
+ButtonLocal buttons[3];
+
+String system_display[4];
+String current_display[4];
+boolean update_display = true;
+String current_card;
+int card_status = 0; // 0 is off, -1 is bad card, 1 is valid.
+
+unsigned long card_check = 0;
+unsigned long button_check = 0;
+
+boolean eStop = false;
+boolean monkeys = false;
+boolean showStatus = false;
+
+RunTime user_time;
+
+// valid users
+Users user_list;
+
+String line;
+
+void setup(void) {
+
+  pinMode(buttons[0].pin,INPUT);
+  pinMode(buttons[1].pin,INPUT);
+  pinMode(buttons[2].pin,INPUT);
+  pinMode(relay,OUTPUT);
+
+  // Unfortunately the relay I'm using is LOW active.
+  // This is kind of bad....
+  // It flicks on for a second on boot.
+  digitalWrite(relay, HIGH);
+  
+  Wire.begin(sdaPin, sclPin);
+
+  WiFi.begin ( ssid, password );
+    
+  lcd.begin (20,4); // for 16 x 2 LCD module
+  lcd.setBacklightPin(3,POSITIVE);
+  lcd.setBacklight(1);
+
+  // set up our buttons
+  buttons[0].pin = 13;
+  buttons[0].colour = "green"; // System Status.
+  buttons[0].state = false;
+  buttons[0].oldState = false;
+  buttons[0].lastDebounce = millis();
+  buttons[1].pin = 12;
+  buttons[1].colour = "red"; // Soft Estop Trigger.....Do not like....
+  buttons[1].state = false;
+  buttons[1].oldState = false;
+  buttons[1].lastDebounce = millis();
+  buttons[2].pin = 15;
+  buttons[2].colour = "trigger"; // Summon Monkey
+  buttons[2].state = false;
+  buttons[2].oldState = false;
+  buttons[2].lastDebounce = millis();
+
+  user_time.minutes = 0;
+  user_time.hours = 0;
+  user_time.last_update = 0;
+  
+  nfc.begin();
+
+  // lets show some nice boot messages.
+  lcd.home();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(F("Booting ACNode 1.0"));
+  updateSystemDisplay("Booting ACNode 1.0");
+  lcd.setCursor(0,1);
+
+  uint32_t versiondata = nfc.getFirmwareVersion();
+  if (! versiondata) {
+    lcd.print(F("No PN53x board"));
+    updateSystemDisplay("PN53x board found");
+    //while (1); // halt
+  } else {
+    lcd.print(F("PN53x board found"));
+    updateSystemDisplay("PN53x board found");
+  }
+
+  lcd.setCursor(0,2);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    lcd.print(".");
+  }
+  
+  lcd.setCursor(0,2);
+  lcd.print(WiFi.localIP());
+  updateSystemDisplay(String(WiFi.localIP()));
+
+  lcd.setCursor(0,3);
+  int server_count = 0;
+  while (!client.connect(host, httpPort) && server_count < 10) {
+    delay(500);
+    lcd.print(".");
+  }
+  lcd.setCursor(0,3);
+  if (server_count >= 10) {
+    lcd.print("Server failed");
+    updateSystemDisplay("Server Not Found");
+  } else {
+    lcd.print("Server Success");
+    updateSystemDisplay("Server Connected");
+  }
+
+  if (mdns.begin("esp8266", WiFi.localIP())) {
+    updateSystemDisplay("MDNS responder started");
+  }
+
+  server.on ( "/", handleRoot );
+  server.on ( "", handleRoot );
+  server.begin();
+
+  delay(2000);
+  
+
+  // configure board to read RFID tags
+  nfc.SAMConfig();
+
+  line.reserve(256);
+
+
+  // once we have network up, check if the monkeys button is active in the database.
+
+  
+}
+
+
+void loop(void) {
+  //mdns.update();
+  server.handleClient();
+
+  // Unlock the machine
+  // hey, is this machine even active?!
+  if(!eStop && !monkeys && card_status > 0) {
+    // we are in GO mode.
+    digitalWrite(relay, LOW);
+  } else {
+    digitalWrite(relay, HIGH);
+  }
+
+  
+
+  
+  // check with server if card is available.
+  if (card_check < millis() - 2000) {
+    checkForCard(); // see if the card status has changed.
+    card_check = millis();
+  }
+
+  
+
+  // debounce the buttons.
+  for (int i = 0; i<3;i++) {
+    if(debounce(i))
+      buttonMenu(i);
+  }
+
+  if(user_time.last_update + 60000 <= millis()) {
+    updateTime();
+    user_time.last_update = millis();
+    update_display = true;
+  }
+ 
+
+  // log message
+
+  // Display stuff.
+  if(update_display) {
+    String ac_status;
+    
+    lcd.clear();
+    lcd.print("ACNode 1.0");
+
+    
+    if(eStop)
+      ac_status = "  [ESTOP]";
+    
+
+    // only show this stuff if we're not on status screen
+    if (!showStatus) {
+    // Update the status display the summon monkeys lock
+      if(monkeys) {
+        ac_status = " [LOCKED]";
+          lcd.setCursor(0,2);
+          lcd.print("Machine Disabled.");
+          lcd.setCursor(0,3);
+          lcd.print("Monkeys Notified.");
+      }
+
+      if(card_status == -1) {
+        ac_status = "[BADCARD]";
+      } else if(card_status == 0) {
+        if(!monkeys)
+          ac_status = " [NOCARD]";
+      } else {
+        if(user_list.level)
+          //ac_status = user_list.level;
+          ac_status = " [ACTIVE]";
+      }
+
+      if(card_status > 0) {
+        lcd.setCursor(0,1);
+        lcd.print(user_list.username.substring(0,14));
+
+
+        lcd.setCursor(18,1);
+        if(user_time.minutes < 10)
+                 lcd.print("0");
+        lcd.print(user_time.minutes);
+
+        lcd.setCursor(15,1);
+        if(user_time.hours < 10)
+          lcd.print("0");
+        lcd.print(user_time.hours);
+        lcd.print(":");
+        
+      }
+
+      // Current machine Status
+      lcd.setCursor(11,0);
+      lcd.print(ac_status);
+    }
+    
+    
+    update_display = false;
+  }
+  
+}
+
+void handleRoot() {
+  server.send(200, "text/plain", "hello from esp8266!");
+}
+
+void updateSystemDisplay(String newLine) {
+ // so, basically a pop system.
+ // first iteration is probably going to leak like a sieve...
+ // Update our back end database here too!
+ // a new line has been received.
+
+ for (int i = 0; i < 3; i++){
+  system_display[i] = system_display[i+1];
+ }
+ system_display[3] = newLine.substring(0,20);
+}
+
+// Display the system log on the main screen.
+void displaySystem(){
+  lcd.clear();
+  for (int i = 0; i < 4; i++){
+    lcd.setCursor(0,i);
+    lcd.print(system_display[i]);
+ }
+ update_display = false;
+}
+
+void updateTime(){
+
+  user_time.minutes++;
+
+  if(user_time.minutes >= 60) {
+    user_time.hours++;
+    user_time.minutes = 0;
+    lcd.setCursor(0,2);
+    lcd.print("Maybe you should take");
+    lcd.setCursor(0,3);
+    lcd.print(" a break?");
+  }
+}
+
+// What do our buttons do?
+void buttonMenu(int array_position) {
+
+  if (buttons[array_position].colour == "red") {
+    if(buttons[array_position].state == true) {
+      if(eStop) {
+        eStop = false;
+        updateSystemDisplay("ESTOP:OFF");
+      } else {
+        eStop = true;
+        updateSystemDisplay("ESTOP:ON");
+      }
+      update_display = true;
+    }
+  } else if (buttons[array_position].colour == "green") {
+    if(buttons[array_position].state == true) {
+      showStatus = true;
+      displaySystem();
+    } else {
+      showStatus = false;
+      update_display = true;
+    }
+  } else if (buttons[array_position].colour == "trigger") {
+    if(buttons[array_position].state == true) {
+      monkeys = true;
+      
+      updateSystemDisplay("Machine Disabled.");
+      update_display = true;
+    } else if(user_list.level == 1) {
+      // We're an admin user, so the Monkey Call can be disabled.
+      monkeys = false;
+      updateSystemDisplay("Machine Enabled.");
+      update_display = true;
+    }
+  }
+}
+
+boolean debounce(int array_position){
+  long debounceDelay = 50;
+  int reading = digitalRead(buttons[array_position].pin);
+  boolean stateChange = false;
+
+  if (reading != buttons[array_position].oldState) 
+    buttons[array_position].lastDebounce = millis();
+
+  if ( (millis() - buttons[array_position].lastDebounce) > debounceDelay){
+    if(reading != buttons[array_position].state) {
+      buttons[array_position].state = reading;
+
+       stateChange = true;
+    }
+  }
+
+  buttons[array_position].oldState = reading;
+
+  // return true when state has changed.
+  return stateChange;
+}
+
+// lets just pull the card check stuff out in to it's own function.
+// Check if we have a card.
+void checkForCard() {
+  uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
+  uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+  
+  // Check if we have a card.
+  if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength)) {
+    // Read the new card UID in to memory.
+    String temp;
+    nfc.PrintHex(uid, uidLength);
+    for (uint8_t i = 0; i < uidLength; i++) {
+        temp += String(lowByte(uid[i]), HEX);
+    }
+
+    // is this card different from our current card?
+    if (current_card != temp) {
+      current_card = temp; // update our current card.
+      updateSystemDisplay("Card:"+temp);
+
+      // Check if this card is valid with the server.
+      String url = "/machines/is_card_valid/" + machine_name + "/" + current_card + "/";
+  
+      // This will send the request to the server
+      client.println("GET " + url + " HTTP/1.1");
+      client.println("Host: " + String(host));
+      client.println("Connection: close");
+      client.println();
+      
+      delay(100); // wait long enough for the server to generate the response
+
+      boolean test_case = true;
+      while(client.available()){
+        line = client.readStringUntil('\r');
+
+        // Do we have a 404?  It's either no machine or no card in database.
+        // no point continuing here...
+        if(line.endsWith("404 NOT FOUND")) {
+          card_status = -1;
+          test_case = false;
+        }
+
+        
+        
+      }
+
+      // update the display
+      update_display = true;
+      // reset how long we've been active.
+      user_time.minutes = 0;
+      user_time.hours = 0;
+    }
+    
+  }
+}
+
+
+
