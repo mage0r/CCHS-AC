@@ -41,7 +41,7 @@ ESP8266WebServer server ( 80 );
 
 LiquidCrystal_I2C	lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified backpack
 
-ButtonLocal buttons[3];
+ButtonLocal buttons[2];
 
 String system_display[10];
 String current_display[4];
@@ -72,26 +72,26 @@ void setup(void) {
   // It flicks on for a second on boot.
   digitalWrite(relay, HIGH);
   
-  Wire.begin(sdaPin, sclPin);
+  Wire.begin();
 
   WiFi.begin ( ssid, password );
+
+  //Serial.begin(9600);
+
+  lcd.setBacklightPin(3,POSITIVE);
+  lcd.setBacklight(1);
     
   lcd.begin (20,4); // for 16 x 2 LCD module
   lcd.setBacklightPin(3,POSITIVE);
   lcd.setBacklight(1);
 
   // set up our buttons
-  buttons[0].pin = 13; //0
+  buttons[0].pin = 0;
   buttons[0].colour = "green"; // System Status.
   buttons[0].state = false;
   buttons[0].oldState = false;
   buttons[0].lastDebounce = millis();
-  buttons[1].pin = 12; //12
-  buttons[1].colour = "red"; // Soft Estop Trigger.....Do not like....
-  buttons[1].state = false;
-  buttons[1].oldState = false;
-  buttons[1].lastDebounce = millis();
-  buttons[2].pin = 5; //13
+  buttons[2].pin = 13;
   buttons[2].colour = "trigger"; // Summon Monkey
   buttons[2].state = false;
   buttons[2].oldState = false;
@@ -131,14 +131,14 @@ void setup(void) {
 
   lcd.setCursor(0,2);
   int server_count = 0;
-  while (WiFi.status() != WL_CONNECTED && server_count < 10) {
+  while (WiFi.status() != WL_CONNECTED && server_count < 30) {
     delay(500);
     lcd.print(".");
     server_count++;
   }
   
   lcd.setCursor(0,2);
-  if (server_count >= 10) {
+  if (server_count >= 30) {
     lcd.print("Could not set IP");
     updateSystemDisplay("Could not set IP");
   } else {
@@ -148,6 +148,8 @@ void setup(void) {
                     String(WiFi.localIP()[2]) + "." +
                     String(WiFi.localIP()[3]);
     updateSystemDisplay(tempIP);
+
+    Serial.println(tempIP);
 
     lead_display += machine_name + " - ";
     lead_display += tempIP;
@@ -362,9 +364,10 @@ void displaySystem(){
   //Always show the IP address
   lcd.setCursor(0,0);
   lcd.print(machine_name + " ");
+  lcd.setCursor(0,1);
   lcd.print(WiFi.localIP());
   
-  for (int i = 1; i < 4; i++){
+  for (int i = 2; i < 4; i++){
     lcd.setCursor(0,i);
     lcd.print(system_display[i+6]);
   }
@@ -388,18 +391,7 @@ void updateTime(){
 // What do our buttons do?
 void buttonMenu(int array_position) {
 
-  if (buttons[array_position].colour == "red") {
-    if(buttons[array_position].state == true) {
-      if(eStop) {
-        eStop = false;
-        updateSystemDisplay("ESTOP:OFF");
-      } else {
-        eStop = true;
-        updateSystemDisplay("ESTOP:ON");
-      }
-      update_display = true;
-    }
-  } else if (buttons[array_position].colour == "green") {
+  if (buttons[array_position].colour == "green") {
     if(buttons[array_position].state == true) {
       showStatus = true;
       displaySystem();
@@ -450,8 +442,9 @@ boolean debounce(int array_position){
 // Check if we have a card.
 void checkForCard() {
   uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
-  uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
-  
+  uint8_t uidLength;     
+
+ 
   // Check if we have a card.
   if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength)) {
     // Read the new card UID in to memory.
@@ -460,7 +453,6 @@ void checkForCard() {
     for (uint8_t i = 0; i < uidLength; i++) {
         temp += String(lowByte(uid[i]), HEX);
     }
-
 
     // is this card different from our current card?
     if (current_card != temp) {

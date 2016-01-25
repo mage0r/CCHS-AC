@@ -26,17 +26,15 @@ struct RunTime {
 };
 
 // Define our i2c pins
-//const byte sclPin = 5;
-const byte sclPin = 14;
-//const byte sdaPin = 4;
-const byte sdaPin = 0;
+const byte sclPin = 5;
+const byte sdaPin = 4;
 
 // Where is our relay
-//const int relay = 15;
-const int relay = 2;
+const int relay = 15;
+
 
 // Where is our neopixel
-const int LED = 4;
+const int LED = 2;
 
 // Set up our wifi
 //const char *ssid = "CCHS-2.4";
