@@ -1,3 +1,13 @@
+void machineStatus(boolean update_status);
+void checkForCard();
+boolean debounce(int array_position);
+void buttonMenu(int array_position);
+void updateTime();
+void displaySystem();
+void updateSystemDisplay(String newLine);
+void handleRoot();
+
+
 struct ButtonLocal {
   int pin;
   String colour;

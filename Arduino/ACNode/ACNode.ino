@@ -4,12 +4,15 @@
 */
 /**************************************************************************/
 
-#include <PN532_HSU.h>
+#include <Wire.h>
+#include <PN532_I2C.h>
 #include <PN532.h>
+#include <NfcAdapter.h>
+
 #include "ACNode.h"
       
-PN532_HSU pn532hsu(Serial);
-PN532 nfc(pn532hsu);
+PN532_I2C pn532_i2c(Wire);
+NfcAdapter nfc = NfcAdapter(pn532_i2c);
 
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
@@ -36,7 +39,6 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, LED, NEO_GRB + NEO_KHZ800);
 
 ESP8266WebServer server ( 80 );
 
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
 LiquidCrystal_I2C	lcd(0x27,2,1,0,4,5,6,7); // 0x27 is the I2C bus address for an unmodified backpack
@@ -71,16 +73,11 @@ void setup(void) {
   // This is kind of bad....
   // It flicks on for a second on boot.
   digitalWrite(relay, HIGH);
-  
-  Wire.begin();
 
   WiFi.begin ( ssid, password );
 
   //Serial.begin(9600);
 
-  lcd.setBacklightPin(3,POSITIVE);
-  lcd.setBacklight(1);
-    
   lcd.begin (20,4); // for 16 x 2 LCD module
   lcd.setBacklightPin(3,POSITIVE);
   lcd.setBacklight(1);
@@ -109,8 +106,6 @@ void setup(void) {
   pinMode(buttons[1].pin,INPUT);
   pinMode(buttons[2].pin,INPUT);
   
-  nfc.begin();
-
   // lets show some nice boot messages.
   lcd.home();
   lcd.clear();
@@ -119,8 +114,8 @@ void setup(void) {
   updateSystemDisplay("Booting CCHS-AC 1.0");
   lcd.setCursor(0,1);
 
-  uint32_t versiondata = nfc.getFirmwareVersion();
-  if (! versiondata) {
+  
+  if (! nfc.begin()) {
     lcd.print(F("No PN53x board"));
     updateSystemDisplay("PN53x board found");
     //while (1); // halt
@@ -190,9 +185,6 @@ void setup(void) {
   machineStatus(false);
   
   delay(2000);
-
-  // configure board to read RFID tags
-  nfc.SAMConfig();
 
   pixels.begin();
   
@@ -354,7 +346,7 @@ void updateSystemDisplay(String newLine) {
  for (int i = 0; i < 9; i++){
   system_display[i] = system_display[i+1];
  }
- system_display[9] = newLine.substring(0,20);
+ system_display[9] = newLine;
 }
 
 // Display the system log on the main screen.
@@ -369,7 +361,7 @@ void displaySystem(){
   
   for (int i = 2; i < 4; i++){
     lcd.setCursor(0,i);
-    lcd.print(system_display[i+6]);
+    lcd.print(system_display[i+6].substring(0,20));
   }
   update_display = false;
 }
@@ -446,14 +438,12 @@ void checkForCard() {
 
  
   // Check if we have a card.
-  if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength)) {
+  if (nfc.tagPresent()) {
     // Read the new card UID in to memory.
-    String temp;
-    nfc.PrintHex(uid, uidLength);
-    for (uint8_t i = 0; i < uidLength; i++) {
-        temp += String(lowByte(uid[i]), HEX);
-    }
+    NfcTag tag = nfc.read();
 
+    String temp = tag.getUidString();
+    
     // is this card different from our current card?
     if (current_card != temp) {
       current_card = temp; // update our current card.
