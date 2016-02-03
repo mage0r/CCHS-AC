@@ -7,7 +7,7 @@ The eventual goal here is to have a dedicated controller board, plus an arduino 
 
 The current server is built in django, but it's stored separately.  I guess I better include that as a submodule.
 
-![Box 1](Photos/mockup.v.0.1.png?raw=true "Box 1")
+![Box 1](Photos/2015-11-24%2021.28.25.jpg?raw=true "Box 1")
 
 CREDITS
 ------------
