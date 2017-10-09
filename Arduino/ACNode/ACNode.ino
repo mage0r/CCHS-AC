@@ -67,32 +67,41 @@ String line; // This is the return line from http connection.
 
 void setup(void) {
 
-  pinMode(relay,OUTPUT);
-
   // Unfortunately the relay I'm using is LOW active.
   // This is kind of bad....
-  // It flicks on for a second on boot.
+  // It flicks on for a second on boot if you don't set the output high first
   digitalWrite(relay, HIGH);
+  pinMode(relay, OUTPUT);
+
+  Serial.begin(9600);
+  Serial.println("Starting up");
+
+  
+  // lets show some nice boot messages.
+  lcd.home();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(F("Booting CCHS-AC 1.0"));
+  updateSystemDisplay("Booting CCHS-AC 1.0");
+  lcd.setCursor(0,1);
 
   WiFi.begin ( ssid, password );
-
-  //Serial.begin(9600);
 
   lcd.begin (20,4); // for 16 x 2 LCD module
   lcd.setBacklightPin(3,POSITIVE);
   lcd.setBacklight(1);
 
   // set up our buttons
-  buttons[0].pin = 0;
+  buttons[0].pin = 12;
   buttons[0].colour = "green"; // System Status.
   buttons[0].state = false;
   buttons[0].oldState = false;
   buttons[0].lastDebounce = millis();
-  buttons[2].pin = 13;
-  buttons[2].colour = "trigger"; // Summon Monkey
-  buttons[2].state = false;
-  buttons[2].oldState = false;
-  buttons[2].lastDebounce = millis();
+  buttons[1].pin = 13;
+  buttons[1].colour = "trigger"; // Summon Monkey
+  buttons[1].state = false;
+  buttons[1].oldState = false;
+  buttons[1].lastDebounce = millis();
 
   user_time.minutes = 0;
   user_time.hours = 0;
@@ -117,7 +126,7 @@ void setup(void) {
   
   if (! nfc.begin()) {
     lcd.print(F("No PN53x board"));
-    updateSystemDisplay("PN53x board found");
+    updateSystemDisplay("PN53x board not found");
     //while (1); // halt
   } else {
     lcd.print(F("PN53x board found"));
@@ -143,8 +152,6 @@ void setup(void) {
                     String(WiFi.localIP()[2]) + "." +
                     String(WiFi.localIP()[3]);
     updateSystemDisplay(tempIP);
-
-    Serial.println(tempIP);
 
     lead_display += machine_name + " - ";
     lead_display += tempIP;
@@ -182,7 +189,7 @@ void setup(void) {
 
   // once we have network up, check if the monkeys button is active in the database.
   //hrm. This absolutely refuses to work....
-  machineStatus(false);
+  //machineStatus(false);
   
   delay(2000);
 
@@ -212,7 +219,7 @@ void loop(void) {
     else
       pixels.setPixelColor(0, pixels.Color(0,0,255));
     pixels.show();
-    checkForCard(); // see if the card status has changed.
+    //checkForCard(); // see if the card status has changed.
     card_check = millis();
   }
 
@@ -343,6 +350,8 @@ void updateSystemDisplay(String newLine) {
  // Update our back end database here too!
  // a new line has been received.
 
+ Serial.println(newLine);
+
  for (int i = 0; i < 9; i++){
   system_display[i] = system_display[i+1];
  }
@@ -434,19 +443,23 @@ boolean debounce(int array_position){
 // Check if we have a card.
 void checkForCard() {
   uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
-  uint8_t uidLength;     
+  uint8_t uidLength;
 
- 
   // Check if we have a card.
   if (nfc.tagPresent()) {
     // Read the new card UID in to memory.
     NfcTag tag = nfc.read();
 
     String temp = tag.getUidString();
+    temp.replace(" ", "");
+    Serial.println(temp);
+
+    // sigh, this reader includes a bunch of spaces in the UID String.
     
     // is this card different from our current card?
     if (current_card != temp) {
       current_card = temp; // update our current card.
+      updateSystemDisplay(current_card);
 
       // if the connection is down, restart it.
       if(!client.connected()) {

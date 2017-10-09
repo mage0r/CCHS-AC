@@ -158,13 +158,13 @@ Wire Wire Line
 	5750 3250 6300 3250
 Wire Wire Line
 	5750 3350 6300 3350
-Text Label 6000 3150 0    60   ~ 0
+Text Label 6300 3150 2    60   ~ 0
 GPIO0
-Text Label 6000 3250 0    60   ~ 0
+Text Label 6300 3250 2    60   ~ 0
 GPIO2
-Text Label 5950 3350 0    60   ~ 0
+Text Label 6300 3350 2    60   ~ 0
 GPIO15
-Text Label 3950 3350 2    60   ~ 0
+Text Label 3600 3350 0    60   ~ 0
 GPIO13
 Wire Wire Line
 	3950 3350 3600 3350
@@ -172,9 +172,9 @@ Wire Wire Line
 	3950 3250 3600 3250
 Wire Wire Line
 	3950 3150 3600 3150
-Text Label 3950 3250 2    60   ~ 0
+Text Label 3600 3250 0    60   ~ 0
 GPIO12
-Text Label 3950 3150 2    60   ~ 0
+Text Label 3600 3150 0    60   ~ 0
 GPIO14
 Wire Wire Line
 	4850 4700 4850 4600
@@ -191,7 +191,7 @@ F 3 "" H 4850 5700 60  0000 C CNN
 	1    4850 5700
 	1    0    0    -1  
 $EndComp
-Text Label 4850 4600 0    60   ~ 0
+Text Label 5150 4600 2    60   ~ 0
 GPIO0
 $Comp
 L +3.3V #PWR?
@@ -217,7 +217,7 @@ F 3 "" H 7250 4100 60  0000 C CNN
 $EndComp
 Wire Wire Line
 	3950 2950 3600 2950
-Text Label 3750 2950 2    60   ~ 0
+Text Label 3600 2950 0    60   ~ 0
 EN
 Wire Wire Line
 	3950 3450 3450 3450
@@ -230,7 +230,7 @@ Wire Wire Line
 NoConn ~ 8100 3650
 Wire Wire Line
 	7000 3650 6600 3650
-Text Label 6650 3650 0    60   ~ 0
+Text Label 6600 3650 0    60   ~ 0
 GPIO2
 $Comp
 L GND #PWR?
@@ -279,7 +279,7 @@ Wire Wire Line
 	3450 2750 3950 2750
 Text Label 3650 2750 0    60   ~ 0
 RESET
-Text Label 5350 4600 0    60   ~ 0
+Text Label 5650 4600 2    60   ~ 0
 RESET
 Wire Wire Line
 	4300 4600 4650 4600
@@ -374,7 +374,7 @@ F 3 "" H 6450 5000 30  0000 C CNN
 $EndComp
 Wire Wire Line
 	6050 5150 6050 5350
-Text Label 6050 5350 0    60   ~ 0
+Text Label 6350 5350 2    60   ~ 0
 RESET
 Wire Wire Line
 	6050 5350 6350 5350
@@ -382,9 +382,9 @@ Wire Wire Line
 	6450 5150 6450 5350
 Wire Wire Line
 	6450 5350 6750 5350
-Text Label 6450 5350 0    60   ~ 0
+Text Label 6750 5350 2    60   ~ 0
 GPIO0
-Text Label 6850 5350 0    60   ~ 0
+Text Label 7200 5350 2    60   ~ 0
 GPIO13
 $Comp
 L R R?
@@ -418,7 +418,7 @@ F 3 "" H 4650 1400 60  0000 C CNN
 	1    4650 1400
 	0    -1   -1   0   
 $EndComp
-Text Label 4650 1750 2    60   ~ 0
+Text Label 4300 1750 0    60   ~ 0
 GPIO15
 Wire Wire Line
 	4750 1600 4750 1750
@@ -465,16 +465,16 @@ F 3 "" H 7300 5000 30  0000 C CNN
 	1    7300 5000
 	1    0    0    -1  
 $EndComp
-Text Label 7300 5350 0    60   ~ 0
+Text Label 7450 5350 2    60   ~ 0
 EN
 Wire Wire Line
 	7300 5150 7300 5350
 Wire Wire Line
 	7300 5350 7450 5350
 Connection ~ 6850 4850
-Text Label 5750 2950 0    60   ~ 0
+Text Label 6150 2950 2    60   ~ 0
 I2C_SDA
-Text Label 5750 3050 0    60   ~ 0
+Text Label 6150 3050 2    60   ~ 0
 I2C_SCL
 $Comp
 L R R?

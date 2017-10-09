@@ -35,19 +35,15 @@ struct RunTime {
   long last_update;
 };
 
-// Define our i2c pins
-const byte sclPin = 5;
-const byte sdaPin = 4;
-
 // Where is our relay
-const int relay = 15;
+const int relay = 13;
 
 
 // Where is our neopixel
 const int LED = 2;
 
 // Set up our wifi
-//const char *ssid = "CCHS-2.4";
+//const char *ssid = "CCHS-WiFi";
 //const char *password = "hackmelb";
 const char *ssid = "_mage_net";
 const char *password = "worldsgreates";
